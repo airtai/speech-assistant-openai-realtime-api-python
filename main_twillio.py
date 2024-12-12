@@ -1,4 +1,5 @@
 import os
+from typing import Annotated
 from fastapi import FastAPI, WebSocket, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from twilio.twiml.voice_response import VoiceResponse, Connect, Say, Stream
@@ -6,14 +7,26 @@ from dotenv import load_dotenv
 
 from openai_client import OpenAIRealtimeClient
 
-from observers.twilio_observer import TwilioObserver
-from observers.function_observer import FunctionObserver
+from observers.twilio_observer import TwilioObserver as TwillioAudioAdapter
 
 load_dotenv()
 
 # Configuration
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PORT = int(os.getenv('PORT', 5050))
+
+llm_config = {
+    "timeout": 600,
+    "cache_seed": 45,  # change the seed for different trials
+    "config_list": [
+        {
+            "model": "gpt-4o-realtime-preview-2024-10-01",
+            "api_key": OPENAI_API_KEY,
+        }
+    ],
+    "temperature": 0.8,
+}
+
 
 app = FastAPI()
 
@@ -45,13 +58,20 @@ async def handle_media_stream(websocket: WebSocket):
     print("Client connected")
     await websocket.accept()
 
-    twilio_observer = TwilioObserver(websocket)
-    openai_client = OpenAIRealtimeClient(OPENAI_API_KEY)
 
-    openai_client.register(twilio_observer)
-    openai_client.register(FunctionObserver())
+    audio_adapter = TwillioAudioAdapter(websocket)
+    openai_client = OpenAIRealtimeClient(
+        system_message="Hello there! I am an AI voice assistant powered by Twilio and the OpenAI Realtime API. You can ask me for facts, jokes, or anything you can imagine. How can I help you?",
+        llm_config=llm_config,
+        audio_adapter=audio_adapter
+    )
 
-    await openai_client.run_openai_client()
+    @openai_client.register_tool(name="get_weather", description="Get the current weather")
+    def get_weather(location: Annotated[str, "city"]) -> str:
+        ...
+        return "The weather is cloudy." if location == "Seattle" else "The weather is sunny."
+
+    await openai_client.run()
             
 
 if __name__ == "__main__":

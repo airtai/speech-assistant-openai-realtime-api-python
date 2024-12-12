@@ -5,7 +5,7 @@ import json
 import base64
 from asyncio import Queue
 
-import pyaudio
+# import pyaudio
 
 SYSTEM_MESSAGE = (
     "You are a helpful and bubbly AI assistant who loves to chat about "
